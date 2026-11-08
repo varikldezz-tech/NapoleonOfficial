@@ -39,6 +39,13 @@ jobs:
           fileDir: ./TMessagesProj
           encodedString: ${{ secrets.GOOGLE_SERVICES_JSON_FILE_IN_BASE64 }}
 
+      - name: Copy google-services.json to all app modules
+        run: |
+          cp TMessagesProj/google-services.json TMessagesProj_AppStandalone/google-services.json
+          cp TMessagesProj/google-services.json TMessagesProj_App/google-services.json || true
+          cp TMessagesProj/google-services.json TMessagesProj_AppHuawei/google-services.json || true
+          cp TMessagesProj/google-services.json TMessagesProj_AppHockeyApp/google-services.json || true
+
       - name: Write signing keystore file
         uses: timheuer/base64-to-file@v1.2
         with:
