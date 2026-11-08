@@ -20,12 +20,23 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Cache Gradle Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper
+          key: gradle-wrapper-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: Cache Android NDK & CMake
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk
+            /usr/local/lib/android/sdk/cmake
+          key: android-ndk-cmake
+
       - name: Accept Android SDK licenses
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n1)
-          fi
           yes | "$SDKMANAGER" --licenses || true
           "$SDKMANAGER" "platform-tools" "platforms;android-33" "build-tools;33.0.1" || true
 
@@ -39,39 +50,30 @@ jobs:
           fileDir: ./TMessagesProj
           encodedString: ${{ secrets.GOOGLE_SERVICES_JSON_FILE_IN_BASE64 }}
 
-      - name: Copy google-services.json to all app modules
-        run: |
-          cp TMessagesProj/google-services.json TMessagesProj_AppStandalone/google-services.json
-          cp TMessagesProj/google-services.json TMessagesProj_App/google-services.json || true
-          cp TMessagesProj/google-services.json TMessagesProj_AppHuawei/google-services.json || true
-          cp TMessagesProj/google-services.json TMessagesProj_AppHockeyApp/google-services.json || true
+      - name: Copy google-services.json to app module
+        run: cp TMessagesProj/google-services.json TMessagesProj_AppStandalone/google-services.json
 
-      - name: Write signing keystore file
+      - name: Write signing keystore
         uses: timheuer/base64-to-file@v1.2
         with:
           fileName: release.keystore
           fileDir: ./TMessagesProj/config
           encodedString: ${{ secrets.SIGNING_KEYSTORE_FILE_IN_BASE64 }}
 
-      - name: Configure signing in gradle.properties
+      - name: Configure signing
         run: |
           {
-            echo "RELEASE_KEY_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}"
-            echo "RELEASE_KEY_ALIAS=${{ secrets.SIGNING_KEY_ALIAS }}"
-            echo "RELEASE_STORE_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}"
             echo "RELEASE_STORE_FILE=../TMessagesProj/config/release.keystore"
+            echo "RELEASE_STORE_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}"
+            echo "RELEASE_KEY_ALIAS=${{ secrets.SIGNING_KEY_ALIAS }}"
+            echo "RELEASE_KEY_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}"
           } >> gradle.properties
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
-        run: |
-          ./gradlew TMessagesProj_AppStandalone:assembleAfatRelease \
-            -PRELEASE_STORE_FILE=../TMessagesProj/config/release.keystore \
-            -PRELEASE_STORE_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }} \
-            -PRELEASE_KEY_ALIAS=${{ secrets.SIGNING_KEY_ALIAS }} \
-            -PRELEASE_KEY_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}
+      - name: Build arm64 only
+        run: ./gradlew TMessagesProj_AppStandalone:assembleArm64Release --no-daemon
 
       - name: Find APKs
         run: find TMessagesProj_AppStandalone/build/outputs/apk -name "*.apk" -exec ls -la {} \;
@@ -80,4 +82,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Napoleon APK
-          path: TMessagesProj_AppStandalone/build/outputs/apk/afat/release/*.apk
+          path: TMessagesProj_AppStandalone/build/outputs/apk/arm64/release/*.apk
