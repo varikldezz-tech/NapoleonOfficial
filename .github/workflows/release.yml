@@ -1,8 +1,8 @@
-name: List Gradle Tasks
+name: Build Napoleon APK
 on: workflow_dispatch
 
 jobs:
-  list:
+  build:
     runs-on: ubuntu-22.04
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
@@ -16,9 +16,17 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Cache Android NDK & CMake
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk
+            /usr/local/lib/android/sdk/cmake
+          key: android-ndk-cmake
 
       - name: Accept Android SDK licenses
         run: |
@@ -29,8 +37,40 @@ jobs:
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
+      - name: Write google-services.json
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: google-services.json
+          fileDir: ./TMessagesProj_AppStandalone
+          encodedString: ${{ secrets.GOOGLE_SERVICES_JSON_FILE_IN_BASE64 }}
+
+      - name: Write signing keystore
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: release.keystore
+          fileDir: ./TMessagesProj/config
+          encodedString: ${{ secrets.SIGNING_KEYSTORE_FILE_IN_BASE64 }}
+
+      - name: Configure signing in gradle.properties
+        run: |
+          {
+            echo "RELEASE_STORE_FILE=../TMessagesProj/config/release.keystore"
+            echo "RELEASE_STORE_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}"
+            echo "RELEASE_KEY_ALIAS=${{ secrets.SIGNING_KEY_ALIAS }}"
+            echo "RELEASE_KEY_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}"
+          } >> gradle.properties
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: List all assemble tasks
-        run: ./gradlew tasks --all | grep -i "assemble" | sort
+      - name: Build with Gradle
+        run: ./gradlew TMessagesProj_AppStandalone:assembleAfatRelease --no-daemon
+
+      - name: Find APKs
+        run: find TMessagesProj_AppStandalone/build/outputs/apk -name "*.apk" -exec ls -la {} \;
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Napoleon APK
+          path: TMessagesProj_AppStandalone/build/outputs/apk/afat/release/*.apk
